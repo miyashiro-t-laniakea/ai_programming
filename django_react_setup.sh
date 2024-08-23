@@ -3,89 +3,59 @@
 # 使用したウェブアプリケーション開発環境をDockerで構築します。
 # 必要なファイルとディレクトリを作成し、Dockerコンテナをビルドして起動します。
 
-# 必要なアプリケーションがインストールされているか確認
-command -v docker >/dev/null 2>&1 || { echo "Dockerがインストールされていません。インストールしてください。" >&2; exit 1; }
-command -v docker compose >/dev/null 2>&1 || { echo "docker composeがインストールされていません。インストールしてください。" >&2; exit 1; }
-command -v node >/dev/null 2>&1 || { echo "Node.jsがインストールされていません。インストールしてください。" >&2; exit 1; }
-command -v python3 >/dev/null 2>&1 || { echo "Python3がインストールされていません。インストールしてください。" >&2; exit 1; }
-command -v git >/dev/null 2>&1 || { echo "Gitがインストールされていません。インストールしてください。" >&2; exit 1; }
-
 # プロジェクト名やディレクトリ名などの変数を定義
 PROJECT_NAME="RepairManager"
 DJANGO_APP_NAME="sampleapi"
 REACT_APP_NAME="frontend"
 
+echo "プロジェクト名: $PROJECT_NAME"
+echo "Djangoアプリ名: $DJANGO_APP_NAME"
+echo "Reactアプリ名: $REACT_APP_NAME"
+
+# 必要なアプリケーションがインストールされているか確認
+echo "必要なアプリケーションの確認中..."
+command -v docker >/dev/null 2>&1 || { echo "Dockerがインストールされていません。インストールしてください。" >&2; exit 1; }
+command -v docker compose >/dev/null 2>&1 || { echo "docker composeがインストールされていません。インストールしてください。" >&2; exit 1; }
+command -v node >/dev/null 2>&1 || { echo "Node.jsがインストールされていません。インストールしてください。" >&2; exit 1; }
+command -v python3 >/dev/null 2>&1 || { echo "Python3がインストールされていません。インストールしてください。" >&2; exit 1; }
+command -v git >/dev/null 2>&1 || { echo "Gitがインストールされていません。インストールしてください。" >&2; exit 1; }
+echo "必要なアプリケーションの確認が完了しました。"
+
+# プロジェクトディレクトリが既に存在する場合はエラーを表示して終了
+if [ -d "$PROJECT_NAME" ]; then
+    echo "エラー: ディレクトリ $PROJECT_NAME は既に存在します。別のディレクトリ名を使用するか、既存のディレクトリを削除してください。" >&2
+    exit 1
+fi
+
 # プロジェクトディレクトリの作成
+echo "プロジェクトディレクトリを作成中..."
 mkdir -p $PROJECT_NAME/backend
 mkdir -p $PROJECT_NAME/frontend
 mkdir -p $PROJECT_NAME/nginx
-
-# Gitリポジトリの初期化
-cd $PROJECT_NAME
-git init
-
-# .gitignoreの生成
-cat <<EOF > .gitignore
-# Python関連
-*.pyc
-__pycache__/
-env/
-venv/
-ENV/
-.venv/
-*.pyo
-*.pyd
-.Python
-build/
-develop-eggs/
-dist/
-downloads/
-eggs/
-.eggs/
-lib/
-lib64/
-parts/
-sdist/
-var/
-*.egg-info/
-.installed.cfg
-*.egg
-
-# Node関連
-node_modules/
-npm-debug.log
-yarn-error.log
-
-# Docker関連
-*.log
-*.lock
-*.pid
-*.swp
-docker-compose.override.yml
-docker-compose.local.yml
-
-# その他
-.DS_Store
-.vscode/
-.idea/
-EOF
+echo "プロジェクトディレクトリの作成が完了しました。"
 
 # Djangoプロジェクトのセットアップ
-cd backend
+echo "Djangoプロジェクトをセットアップ中..."
+cd $PROJECT_NAME/backend
 docker run --rm -v $(pwd):/app -w /app python:3.10 bash -c "
-    pip install django &&
+    pip install django djangorestframework &&
     django-admin startproject $DJANGO_APP_NAME .
 "
+echo "Djangoプロジェクトのセットアップが完了しました。"
 
 # Reactプロジェクトのセットアップ
+echo "Reactプロジェクトをセットアップ中..."
 cd ../frontend
 docker run --rm -v $(pwd):/app -w /app node:16 bash -c "
     npx create-react-app . &&
     npm install
 "
+echo "Reactプロジェクトのセットアップが完了しました。"
 
 # Django用のDockerfileの作成
-cat <<EOF > ../backend/Dockerfile
+echo "Django用のDockerfileを作成中..."
+cd ../
+cat <<EOF > backend/Dockerfile
 # ベースイメージ
 FROM python:3.10
 
@@ -102,14 +72,19 @@ COPY . .
 # GunicornでDjangoアプリケーションを起動
 CMD ["gunicorn", "--bind", "0.0.0.0:8000", "$DJANGO_APP_NAME.wsgi:application"]
 EOF
+echo "Django用のDockerfileの作成が完了しました。"
 
-cat <<EOF > ../backend/requirements.txt
+echo "Django用のrequirements.txtを作成中..."
+cat <<EOF > backend/requirements.txt
 django>=3.2,<4.0
+djangorestframework
 gunicorn
 EOF
+echo "Django用のrequirements.txtの作成が完了しました。"
 
 # React用のDockerfileの作成
-cat <<EOF > ../frontend/Dockerfile
+echo "React用のDockerfileを作成中..."
+cat <<EOF > frontend/Dockerfile
 # ベースイメージ
 FROM node:16
 
@@ -126,86 +101,104 @@ COPY . .
 # Reactアプリケーションの起動
 CMD ["npm", "start"]
 EOF
+echo "React用のDockerfileの作成が完了しました。"
 
 # Nginx用のDockerfileの作成
-cat <<EOF > ../nginx/Dockerfile
+echo "Nginx用のDockerfileを作成中..."
+cat <<EOF > nginx/Dockerfile
 FROM nginx:alpine
 COPY nginx.conf /etc/nginx/nginx.conf
 EOF
+echo "Nginx用のDockerfileの作成が完了しました。"
 
 # Nginxの設定ファイルの作成
-cat <<EOF > ../nginx/nginx.conf
-# このnginx.confファイルはNginxウェブサーバーの主要な設定ファイルです。
-# サーバーの動作、リクエストの処理方法、プロキシの設定などを定義します。
-# この設定により、Nginxは異なるアプリケーション（フロントエンド、バックエンド）へのトラフィックを適切に振り分けます。
-
+echo "Nginxの設定ファイルを作成中..."
+cat <<EOF > nginx/nginx.conf
 events {
-    worker_connections 1024;  # 1ワーカーあたりの最大同時接続数
+    worker_connections 1024;
 }
 
 http {
     server {
-        listen 80;  # ポート80でHTTPリクエストを受け付け
+        listen 80;
 
         location / {
-            proxy_pass http://frontend:3000;  # フロントエンド(React)へリクエストを転送、'frontend'はDocker Composeで定義されたサービス名、3000はReactの開発サーバーのデフォルトポート
+            proxy_pass http://frontend:3000;
         }
 
         location /api/ {
-            proxy_pass http://web:8000;  # バックエンド(Django)へAPIリクエストを転送、'web'はDockerComposeで定義されたサービス名、8000はDjangoのデフォルトポート
-            proxy_set_header Host \$host;  # オリジナルのHostヘッダーを保持
-            proxy_set_header X-Real-IP \$remote_addr;  # クライアントの実際のIPを設定
-            proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;  # プロキシ経由の場合のIP情報を追加
-            proxy_set_header X-Forwarded-Proto \$scheme;  # 使用されているプロトコル(http/https)を伝達
+            proxy_pass http://web:8000;
+            proxy_set_header Host \$host;
+            proxy_set_header X-Real-IP \$remote_addr;
+            proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
+            proxy_set_header X-Forwarded-Proto \$scheme;
         }
     }
 }
 EOF
+echo "Nginxの設定ファイルの作成が完了しました。"
 
 # docker-compose.ymlの作成
-cat <<EOF > ../docker-compose.yml
-# このdocker-compose.ymlファイルは、プロジェクトの複数のDockerコンテナを定義し管理します。
-# バックエンド(Django)、フロントエンド(React)、Nginxの3つのサービスを設定しています。
-# このファイルにより、開発環境全体を簡単に起動、停止、管理することができます。
-
-version: '3.8'  # Docker Composeのバージョンを指定
+echo "docker-compose.ymlを作成中..."
+cat <<EOF > docker-compose.yml
+version: '3.8'
 
 services:
-  # バックエンド(Django)サービス:
-  # Djangoアプリケーションを実行し、APIエンドポイントを提供します。
   web:
-    build: ./backend  # Dockerfileのパスを指定
+    build: ./backend
     ports:
-      - "8000:8000"  # ホストのポート8000をコンテナのポート8000にマッピング
+      - "8000:8000"
     volumes:
-      - ./backend:/app  # ホストのbackendディレクトリをコンテナの/appにマウント（ライブリロード用）
+      - ./backend:/app
     environment:
-      - DEBUG=1  # Djangoのデバッグモードを有効化
+      - DEBUG=1
 
-  # フロントエンド(React)サービス:
-  # Reactアプリケーションを実行し、ユーザーインターフェースを提供します。
   frontend:
-    build: ./frontend  # Dockerfileのパスを指定
+    build: ./frontend
     ports:
-      - "3000:3000"  # ホストのポート3000をコンテナのポート3000にマッピング
+      - "3000:3000"
     volumes:
-      - ./frontend:/app  # ホストのfrontendディレクトリをコンテナの/appにマウント（ライブリロード用）
+      - ./frontend:/app
     environment:
-      - CHOKIDAR_USEPOLLING=true  # ファイル変更の検出方法を設定（特定の環境で必要）
+      - CHOKIDAR_USEPOLLING=true
 
-  # Nginxサービス:
-  # リバースプロキシとして機能し、クライアントリクエストを適切なサービスに振り分けます。
   nginx:
-    build: ./nginx  # Dockerfileのパスを指定
+    build: ./nginx
     ports:
-      - "80:80"  # ホストのポート80をコンテナのポート80にマッピング
-    depends_on:  # 依存関係を定義（Nginxは他のサービスの後に起動）
+      - "80:80"
+    depends_on:
       - web
       - frontend
 EOF
+echo "docker-compose.ymlの作成が完了しました。"
+
+# Gitの初期化と.gitignoreの作成
+echo "Gitの初期化と.gitignoreの作成中..."
+cd $PROJECT_NAME
+git init
+cat <<EOF > .gitignore
+# Python
+*.pyc
+__pycache__/
+
+# Node
+node_modules/
+
+# Docker
+*.log
+Dockerfile
+docker-compose.yml
+
+# Django
+db.sqlite3
+/media/
+staticfiles/
+EOF
+echo "Gitの初期化と.gitignoreの作成が完了しました。"
 
 # Dockerコンテナのビルドと起動
-cd ..
+echo "Dockerコンテナのビルドと起動を開始します..."
 docker compose up --build
 
+echo "セットアップが完了しました。"
 echo "Nginxを使って、Djangoのサンプル画面は http://localhost/api/ に、Reactのサンプル画面は http://localhost/ にアクセスして確認してください。"
