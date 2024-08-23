@@ -13,7 +13,7 @@ echo "Djangoアプリ名: $DJANGO_APP_NAME"
 echo "Reactアプリ名: $REACT_APP_NAME"
 
 # 必要なアプリケーションがインストールされているか確認
-echo "必要なアプリケーションの確認中..."
+echo "1. 必要なアプリケーションの確認中..."
 command -v docker >/dev/null 2>&1 || { echo "Dockerがインストールされていません。インストールしてください。" >&2; exit 1; }
 command -v docker compose >/dev/null 2>&1 || { echo "docker composeがインストールされていません。インストールしてください。" >&2; exit 1; }
 command -v node >/dev/null 2>&1 || { echo "Node.jsがインストールされていません。インストールしてください。" >&2; exit 1; }
@@ -28,14 +28,14 @@ if [ -d "$PROJECT_NAME" ]; then
 fi
 
 # プロジェクトディレクトリの作成
-echo "プロジェクトディレクトリを作成中..."
+echo "2. プロジェクトディレクトリを作成中..."
 mkdir -p $PROJECT_NAME/backend
 mkdir -p $PROJECT_NAME/frontend
 mkdir -p $PROJECT_NAME/nginx
 echo "プロジェクトディレクトリの作成が完了しました。"
 
 # Djangoプロジェクトのセットアップ
-echo "Djangoプロジェクトをセットアップ中..."
+echo "3. Djangoプロジェクトをセットアップ中..."
 cd $PROJECT_NAME/backend
 docker run --rm -v $(pwd):/app -w /app python:3.10 bash -c "
     pip install django djangorestframework &&
@@ -43,17 +43,82 @@ docker run --rm -v $(pwd):/app -w /app python:3.10 bash -c "
 "
 echo "Djangoプロジェクトのセットアップが完了しました。"
 
+# Django settings.pyの修正
+echo "Django settings.pyを修正中..."
+sed -i '' "s/INSTALLED_APPS = \[/INSTALLED_APPS = [\n    'rest_framework',/" $DJANGO_APP_NAME/settings.py
+echo "Django settings.pyの修正が完了しました。"
+
+# Django views.pyの作成
+echo "Django views.pyを作成中..."
+cat <<EOF > $DJANGO_APP_NAME/views.py
+from rest_framework.views import APIView
+from rest_framework.response import Response
+
+class HelloWorldView(APIView):
+    def get(self, request):
+        return Response({"message": "Hello from Django!"})
+EOF
+echo "Django views.pyの作成が完了しました。"
+
+# Django urls.pyの修正
+echo "Django urls.pyを修正中..."
+cat <<EOF > $DJANGO_APP_NAME/urls.py
+from django.contrib import admin
+from django.urls import path
+from .views import HelloWorldView
+
+urlpatterns = [
+    path('admin/', admin.site.urls),
+    path('api/hello/', HelloWorldView.as_view(), name='hello_world'),
+]
+EOF
+echo "Django urls.pyの修正が完了しました。"
+
 # Reactプロジェクトのセットアップ
-echo "Reactプロジェクトをセットアップ中..."
+echo "4. Reactプロジェクトをセットアップ中..."
 cd ../frontend
 docker run --rm -v $(pwd):/app -w /app node:16 bash -c "
     npx create-react-app . &&
+    npm install axios &&
     npm install
 "
 echo "Reactプロジェクトのセットアップが完了しました。"
 
+# React App.jsの修正
+echo "React App.jsを修正中..."
+cat <<EOF > src/App.js
+import React, { useState, useEffect } from 'react';
+import axios from 'axios';
+import './App.css';
+
+function App() {
+  const [message, setMessage] = useState('');
+
+  useEffect(() => {
+    axios.get('/api/hello/')
+      .then(response => {
+        setMessage(response.data.message);
+      })
+      .catch(error => {
+        console.error('Error fetching data: ', error);
+      });
+  }, []);
+
+  return (
+    <div className="App">
+      <header className="App-header">
+        <h1>{message}</h1>
+      </header>
+    </div>
+  );
+}
+
+export default App;
+EOF
+echo "React App.jsの修正が完了しました。"
+
 # Django用のDockerfileの作成
-echo "Django用のDockerfileを作成中..."
+echo "5. Django用のDockerfileを作成中..."
 cd ../
 cat <<EOF > backend/Dockerfile
 # ベースイメージ
@@ -83,7 +148,7 @@ EOF
 echo "Django用のrequirements.txtの作成が完了しました。"
 
 # React用のDockerfileの作成
-echo "React用のDockerfileを作成中..."
+echo "6. React用のDockerfileを作成中..."
 cat <<EOF > frontend/Dockerfile
 # ベースイメージ
 FROM node:16
@@ -112,7 +177,7 @@ EOF
 echo "Nginx用のDockerfileの作成が完了しました。"
 
 # Nginxの設定ファイルの作成
-echo "Nginxの設定ファイルを作成中..."
+echo "7. Nginxの設定ファイルを作成中..."
 cat <<EOF > nginx/nginx.conf
 events {
     worker_connections 1024;
@@ -139,10 +204,8 @@ EOF
 echo "Nginxの設定ファイルの作成が完了しました。"
 
 # docker-compose.ymlの作成
-echo "docker-compose.ymlを作成中..."
+echo "8. docker-compose.ymlを作成中..."
 cat <<EOF > docker-compose.yml
-version: '3.8'
-
 services:
   web:
     build: ./backend
@@ -159,6 +222,7 @@ services:
       - "3000:3000"
     volumes:
       - ./frontend:/app
+      - /app/node_modules
     environment:
       - CHOKIDAR_USEPOLLING=true
 
@@ -173,7 +237,7 @@ EOF
 echo "docker-compose.ymlの作成が完了しました。"
 
 # Gitの初期化と.gitignoreの作成
-echo "Gitの初期化と.gitignoreの作成中..."
+echo "9. Gitの初期化と.gitignoreの作成中..."
 cd $PROJECT_NAME
 git init
 cat <<EOF > .gitignore
@@ -201,4 +265,4 @@ echo "Dockerコンテナのビルドと起動を開始します..."
 docker compose up --build
 
 echo "セットアップが完了しました。"
-echo "Nginxを使って、Djangoのサンプル画面は http://localhost/api/ に、Reactのサンプル画面は http://localhost/ にアクセスして確認してください。"
+echo "Nginxを使って、Djangoのサンプル画面は http://localhost/api/hello/ に、Reactのサンプル画面は http://localhost/ にアクセスして確認してください。"
