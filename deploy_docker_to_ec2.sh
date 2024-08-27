@@ -1,8 +1,8 @@
 #!/bin/bash
 
 # 変数の設定
-INSTANCE_IP="18.179.17.184"
-KEY_NAME="django-app-key.pem"
+INSTANCE_IP="18.177.87.75"
+KEY_NAME="RepairManager-key.pem"
 PROJECT_NAME="RepairManager"
 
 # 関数: エラーチェックと進捗報告
@@ -53,10 +53,13 @@ check_status ".gitignoreファイルを作成しました"
 # Dockerイメージのビルドと保存
 echo "Dockerイメージをビルドして保存中..."
 cd $PROJECT_NAME
-docker compose build
+docker buildx create --use
+docker buildx build --platform linux/amd64 -t repairmanager-backend:latest ./backend --load
+docker buildx build --platform linux/amd64 -t repairmanager-frontend:latest ./frontend --load
+docker buildx build --platform linux/amd64 -t repairmanager-nginx:latest ./nginx --load
 check_status "Dockerイメージをビルドしました"
 
-docker save repairmanager-web repairmanager-frontend repairmanager-nginx > repairmanager_images.tar
+docker save repairmanager-backend repairmanager-frontend repairmanager-nginx > repairmanager_images.tar
 check_status "Dockerイメージを保存しました"
 
 # rsyncを使用して必要なファイルのみを転送
@@ -75,13 +78,10 @@ ssh -i "../$KEY_NAME" ubuntu@$INSTANCE_IP << EOF
     cd $PROJECT_NAME
     
     # 既存のコンテナを停止して削除
-    docker compose down
+    docker-compose down
     
     # 転送したイメージファイルを読み込み
     docker load < repairmanager_images.tar
-    
-    # フロントエンドの依存関係を更新
-    docker compose run --rm frontend npm install @babel/plugin-proposal-private-property-in-object --save-dev
     
     # docker-compose.ymlからversionを削除
     sed -i '/version:/d' docker-compose.yml

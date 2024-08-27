@@ -2,6 +2,11 @@
 
 # このスクリプトは、AWS EC2インスタンスを自動的に作成し、Dockerをインストールします。
 # カスタムVPC、サブネット、セキュリティグループの自動設定を含みます。
+# 変数の設定
+AMI_ID="ami-0ac6fa9865c21266e"  # Ubuntu 22.04 LTS AMI ID (東京リージョン)
+INSTANCE_TYPE="t2.micro"
+KEY_NAME="RepairManager-key"  # デフォルトのキーペア名
+VOLUME_SIZE="${3:-16}"  # デフォルトのボリュームサイズを16GBに設定
 
 set -euo pipefail  # より厳格なエラーハンドリング
 LOG_FILE="deployment_$(date +%Y%m%d%H%M%S).log"
@@ -21,11 +26,6 @@ handle_error() {
 log "AWS CLIのインストールを確認中..."
 command -v aws &> /dev/null || handle_error "AWS CLIがインストールされていません。インストールしてから再実行してください。"
 log "AWS CLIがインストールされています。"
-
-# 変数の設定
-AMI_ID="ami-0ac6fa9865c21266e"  # Ubuntu 22.04 LTS AMI ID (東京リージョン)
-INSTANCE_TYPE="t2.micro"
-KEY_NAME="django-app-key"  # デフォルトのキーペア名
 
 # カスタムVPCとサブネットの指定、指定がなければデフォルトを使用
 VPC_ID="${1:-$(aws ec2 describe-vpcs --filters "Name=isDefault,Values=true" --query "Vpcs[0].VpcId" --output text)}"
@@ -48,6 +48,7 @@ fi
 log "キーペアの確認が完了しました。"
 log "使用するVPC ID: $VPC_ID"
 log "使用するサブネットID: $SUBNET_ID"
+log "EBSボリュームサイズ: ${VOLUME_SIZE}GB"
 
 # セキュリティグループを作成
 log "セキュリティグループを作成中..."
@@ -71,6 +72,7 @@ INSTANCE_ID=$(aws ec2 run-instances \
     --key-name "$KEY_NAME" \
     --security-group-ids "$SECURITY_GROUP_ID" \
     --subnet-id "$SUBNET_ID" \
+    --block-device-mappings "[{\"DeviceName\":\"/dev/sda1\",\"Ebs\":{\"VolumeSize\":$VOLUME_SIZE,\"VolumeType\":\"gp2\"}}]" \
     --query 'Instances[0].InstanceId' \
     --output text) || handle_error "インスタンスの作成に失敗しました。"
 
@@ -135,6 +137,7 @@ Docker版数: $DOCKER_VERSION
 VPC ID: $VPC_ID
 サブネットID: $SUBNET_ID
 セキュリティグループID: $SECURITY_GROUP_ID
+EBSボリュームサイズ: ${VOLUME_SIZE}GB
 ======================
 SSHでログインするには: ssh -i $KEY_NAME.pem ubuntu@$PUBLIC_IP
 EOF

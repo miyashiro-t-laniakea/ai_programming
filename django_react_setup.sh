@@ -19,6 +19,32 @@ command -v docker >/dev/null 2>&1 || { echo "エラー: Dockerがインストー
 command -v docker compose >/dev/null 2>&1 || { echo "エラー: docker composeがインストールされていません。" >&2; exit 1; }
 echo "必要なアプリケーションの確認が完了しました。"
 
+echo "Dockerデーモンの状態を確認中..."
+if ! docker info >/dev/null 2>&1; then
+    echo "Dockerデーモンが動作していません。起動を試みます..."
+    
+    # OSによって起動コマンドが異なる
+    if [[ "$OSTYPE" == "darwin"* ]]; then
+        # macOS
+        open -a Docker
+    elif [[ "$OSTYPE" == "linux-gnu"* ]]; then
+        # Linux (要sudo権限)
+        sudo systemctl start docker
+    else
+        echo "お使いのOSでのDockerの自動起動に対応していません。手動でDockerを起動してください。"
+        exit 1
+    fi
+    
+    # Dockerの起動を待つ
+    echo "Dockerの起動を待っています..."
+    while ! docker info >/dev/null 2>&1; do
+        sleep 1
+    done
+    echo "Dockerが正常に起動しました。"
+else
+    echo "Dockerデーモンは既に動作しています。"
+fi
+
 # プロジェクトディレクトリが既に存在する場合はエラーを表示して終了
 if [ -d "$PROJECT_NAME" ]; then
     echo "エラー: ディレクトリ $PROJECT_NAME は既に存在します。別のディレクトリ名を使用するか、既存のディレクトリを削除してください。" >&2
